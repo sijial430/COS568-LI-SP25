@@ -74,28 +74,33 @@ void benchmark_64_hybrid_pgm_lipp(tli::Benchmark<uint64_t>& benchmark, const std
       } else if (filename.find("1m") != std::string::npos) {
         // After 1M operations, we need larger error bounds for some search strategies
         // as the data structure becomes less optimal
-        benchmark.template Run<HybridPGMLIPP<uint64_t, ExponentialSearch<record>,256>>();
-        benchmark.template Run<HybridPGMLIPP<uint64_t, ExponentialSearch<record>,512>>();
-        benchmark.template Run<HybridPGMLIPP<uint64_t, ExponentialSearch<record>,1024>>();
-        
-        benchmark.template Run<HybridPGMLIPP<uint64_t, InterpolationSearch<record>,256>>();
-        benchmark.template Run<HybridPGMLIPP<uint64_t, InterpolationSearch<record>,512>>();
-        benchmark.template Run<HybridPGMLIPP<uint64_t, InterpolationSearch<record>,1024>>();
-        
-        // Binary search is more robust to changes in the data distribution
+        benchmark.template Run<HybridPGMLIPP<uint64_t, BranchingBinarySearch<record>,64>>();
         benchmark.template Run<HybridPGMLIPP<uint64_t, BranchingBinarySearch<record>,128>>();
-        benchmark.template Run<HybridPGMLIPP<uint64_t, BranchingBinarySearch<record>,256>>();
-        benchmark.template Run<HybridPGMLIPP<uint64_t, BranchingBinarySearch<record>,512>>();
-      } else if (filename.find("2m") != std::string::npos) {
-        // After 2M operations, we test with even larger error bounds
-        // as the data structure has undergone significant changes
         benchmark.template Run<HybridPGMLIPP<uint64_t, BranchingBinarySearch<record>,256>>();
         benchmark.template Run<HybridPGMLIPP<uint64_t, BranchingBinarySearch<record>,512>>();
         benchmark.template Run<HybridPGMLIPP<uint64_t, BranchingBinarySearch<record>,1024>>();
         
+        benchmark.template Run<HybridPGMLIPP<uint64_t, InterpolationSearch<record>,64>>();
+        benchmark.template Run<HybridPGMLIPP<uint64_t, InterpolationSearch<record>,128>>();
+        benchmark.template Run<HybridPGMLIPP<uint64_t, InterpolationSearch<record>,256>>();
+        benchmark.template Run<HybridPGMLIPP<uint64_t, InterpolationSearch<record>,512>>();
+        benchmark.template Run<HybridPGMLIPP<uint64_t, InterpolationSearch<record>,1024>>();
+        
+        benchmark.template Run<HybridPGMLIPP<uint64_t, ExponentialSearch<record>,64>>();
+        benchmark.template Run<HybridPGMLIPP<uint64_t, ExponentialSearch<record>,128>>();
         benchmark.template Run<HybridPGMLIPP<uint64_t, ExponentialSearch<record>,256>>();
         benchmark.template Run<HybridPGMLIPP<uint64_t, ExponentialSearch<record>,512>>();
         benchmark.template Run<HybridPGMLIPP<uint64_t, ExponentialSearch<record>,1024>>();
+      } else if (filename.find("2m") != std::string::npos) {
+        // After 2M operations, we test with even larger error bounds
+        // as the data structure has undergone significant changes
+        benchmark.template Run<HybridPGMLIPP<uint64_t, BranchingBinarySearch<record>,256>>();
+        benchmark.template Run<HybridPGMLIPP<uint64_t, BranchingBinarySearch<record>,512>>(); 
+        benchmark.template Run<HybridPGMLIPP<uint64_t, BranchingBinarySearch<record>,1024>>();
+        
+        benchmark.template Run<HybridPGMLIPP<uint64_t, ExponentialSearch<record>,256>>();
+        benchmark.template Run<HybridPGMLIPP<uint64_t, ExponentialSearch<record>,512>>();
+        benchmark.template Run<HybridPGMLIPP<uint64_t, ExponentialSearch<record>,1024>>();  
         
         benchmark.template Run<HybridPGMLIPP<uint64_t, InterpolationSearch<record>,256>>();
         benchmark.template Run<HybridPGMLIPP<uint64_t, InterpolationSearch<record>,512>>();
@@ -114,7 +119,7 @@ void benchmark_64_hybrid_pgm_lipp(tli::Benchmark<uint64_t>& benchmark, const std
 
         benchmark.template Run<HybridPGMLIPP<uint64_t, ExponentialSearch<record>,16>>();
         benchmark.template Run<HybridPGMLIPP<uint64_t, ExponentialSearch<record>,32>>();
-        benchmark.template Run<HybridPGMLIPP<uint64_t, ExponentialSearch<record>,64>>();
+        benchmark.template Run<HybridPGMLIPP<uint64_t, ExponentialSearch<record>,64>>();  
         benchmark.template Run<HybridPGMLIPP<uint64_t, ExponentialSearch<record>,128>>();
         benchmark.template Run<HybridPGMLIPP<uint64_t, ExponentialSearch<record>,256>>();
         benchmark.template Run<HybridPGMLIPP<uint64_t, ExponentialSearch<record>,512>>();
@@ -152,23 +157,17 @@ void benchmark_64_hybrid_pgm_lipp(tli::Benchmark<uint64_t>& benchmark, const std
         // For high insertion rates (80-90%), we need the largest error bounds
         // as the data structure is highly dynamic and original model accuracy degrades
 
-        // benchmark.template Run<HybridPGMLIPP<uint64_t, BranchingBinarySearch<record>,64>>();
-        // benchmark.template Run<HybridPGMLIPP<uint64_t, BranchingBinarySearch<record>,128>>();
+        benchmark.template Run<HybridPGMLIPP<uint64_t, BranchingBinarySearch<record>,128>>();
         benchmark.template Run<HybridPGMLIPP<uint64_t, BranchingBinarySearch<record>,256>>();
         benchmark.template Run<HybridPGMLIPP<uint64_t, BranchingBinarySearch<record>,512>>();
-        benchmark.template Run<HybridPGMLIPP<uint64_t, BranchingBinarySearch<record>,1024>>();
         
-        // benchmark.template Run<HybridPGMLIPP<uint64_t, InterpolationSearch<record>,64>>();
-        // benchmark.template Run<HybridPGMLIPP<uint64_t, InterpolationSearch<record>,128>>();
+        benchmark.template Run<HybridPGMLIPP<uint64_t, InterpolationSearch<record>,128>>();
         benchmark.template Run<HybridPGMLIPP<uint64_t, InterpolationSearch<record>,256>>();
         benchmark.template Run<HybridPGMLIPP<uint64_t, InterpolationSearch<record>,512>>();
-        benchmark.template Run<HybridPGMLIPP<uint64_t, InterpolationSearch<record>,1024>>();
         
-        // benchmark.template Run<HybridPGMLIPP<uint64_t, ExponentialSearch<record>,64>>();
-        // benchmark.template Run<HybridPGMLIPP<uint64_t, ExponentialSearch<record>,128>>();
+        benchmark.template Run<HybridPGMLIPP<uint64_t, ExponentialSearch<record>,128>>();
         benchmark.template Run<HybridPGMLIPP<uint64_t, ExponentialSearch<record>,256>>();
         benchmark.template Run<HybridPGMLIPP<uint64_t, ExponentialSearch<record>,512>>();
-        benchmark.template Run<HybridPGMLIPP<uint64_t, ExponentialSearch<record>,1024>>();
       }
     }
   }

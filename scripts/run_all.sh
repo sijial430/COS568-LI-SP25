@@ -1,7 +1,7 @@
 #!/bin/bash
 # Run all steps in sequence
 
-set -e  # Exit on error
+# set -e  # Exit on error
 
 echo "=== Starting Benchmark ==="
 
@@ -26,3 +26,6 @@ echo "Step 5: Running benchmarks..."
 
 echo "=== Benchmark completed successfully ==="
 echo "Check results in the 'results' directory."
+
+echo "Step 6: Analyzing results..."
+python ./scripts/analysis.py

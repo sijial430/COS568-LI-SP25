@@ -84,6 +84,26 @@ void benchmark_64_dynamic_pgm(tli::Benchmark<uint64_t>& benchmark, const std::st
         benchmark.template Run<DynamicPGM<uint64_t, BranchingBinarySearch<record>,512>>();
         benchmark.template Run<DynamicPGM<uint64_t, InterpolationSearch<record>,512>>();
         benchmark.template Run<DynamicPGM<uint64_t, LinearSearch<record>,512>>();
+      } else if (filename.find("0.800000i") != std::string::npos || 
+                 filename.find("0.900000i") != std::string::npos || 
+                 filename.find("0.100000i") != std::string::npos) {
+        benchmark.template Run<DynamicPGM<uint64_t, BranchingBinarySearch<record>,64>>();
+        benchmark.template Run<DynamicPGM<uint64_t, BranchingBinarySearch<record>,128>>();
+        benchmark.template Run<DynamicPGM<uint64_t, BranchingBinarySearch<record>,256>>();
+        benchmark.template Run<DynamicPGM<uint64_t, BranchingBinarySearch<record>,512>>();
+        benchmark.template Run<DynamicPGM<uint64_t, BranchingBinarySearch<record>,1024>>();
+        
+        benchmark.template Run<DynamicPGM<uint64_t, InterpolationSearch<record>,64>>();
+        benchmark.template Run<DynamicPGM<uint64_t, InterpolationSearch<record>,128>>();
+        benchmark.template Run<DynamicPGM<uint64_t, InterpolationSearch<record>,256>>();
+        benchmark.template Run<DynamicPGM<uint64_t, InterpolationSearch<record>,512>>();
+        benchmark.template Run<DynamicPGM<uint64_t, InterpolationSearch<record>,1024>>();
+        
+        benchmark.template Run<DynamicPGM<uint64_t, ExponentialSearch<record>,64>>();
+        benchmark.template Run<DynamicPGM<uint64_t, ExponentialSearch<record>,128>>();
+        benchmark.template Run<DynamicPGM<uint64_t, ExponentialSearch<record>,256>>();
+        benchmark.template Run<DynamicPGM<uint64_t, ExponentialSearch<record>,512>>();
+        benchmark.template Run<DynamicPGM<uint64_t, ExponentialSearch<record>,1024>>();
       }
     } else {
       if (filename.find("0.050000i") != std::string::npos) {
@@ -95,13 +115,43 @@ void benchmark_64_dynamic_pgm(tli::Benchmark<uint64_t>& benchmark, const std::st
         benchmark.template Run<DynamicPGM<uint64_t, BranchingBinarySearch<record>,64>>();
         benchmark.template Run<DynamicPGM<uint64_t, BranchingBinarySearch<record>,512>>();
       } else if (filename.find("0.900000i") != std::string::npos) {
-        benchmark.template Run<DynamicPGM<uint64_t, BranchingBinarySearch<record>,512>>();
-        benchmark.template Run<DynamicPGM<uint64_t, BranchingBinarySearch<record>,64>>();
+        // benchmark.template Run<DynamicPGM<uint64_t, BranchingBinarySearch<record>,64>>();
         benchmark.template Run<DynamicPGM<uint64_t, BranchingBinarySearch<record>,128>>();
+        benchmark.template Run<DynamicPGM<uint64_t, BranchingBinarySearch<record>,256>>();
+        benchmark.template Run<DynamicPGM<uint64_t, BranchingBinarySearch<record>,512>>();
+        // benchmark.template Run<DynamicPGM<uint64_t, BranchingBinarySearch<record>,1024>>();
+
+        // benchmark.template Run<DynamicPGM<uint64_t, InterpolationSearch<record>,64>>();
+        benchmark.template Run<DynamicPGM<uint64_t, InterpolationSearch<record>,128>>();
+        benchmark.template Run<DynamicPGM<uint64_t, InterpolationSearch<record>,256>>();
+        benchmark.template Run<DynamicPGM<uint64_t, InterpolationSearch<record>,512>>();
+        // benchmark.template Run<DynamicPGM<uint64_t, InterpolationSearch<record>,1024>>();
+
+        // benchmark.template Run<DynamicPGM<uint64_t, ExponentialSearch<record>,64>>();
+        benchmark.template Run<DynamicPGM<uint64_t, ExponentialSearch<record>,128>>();
+        benchmark.template Run<DynamicPGM<uint64_t, ExponentialSearch<record>,256>>();
+        benchmark.template Run<DynamicPGM<uint64_t, ExponentialSearch<record>,512>>();
+        // benchmark.template Run<DynamicPGM<uint64_t, ExponentialSearch<record>,1024>>();
+        
       } else if (filename.find("0.100000i") != std::string::npos) {
-        benchmark.template Run<DynamicPGM<uint64_t, BranchingBinarySearch<record>,512>>();
-        benchmark.template Run<DynamicPGM<uint64_t, BranchingBinarySearch<record>,64>>();
+        // benchmark.template Run<DynamicPGM<uint64_t, BranchingBinarySearch<record>,64>>();
         benchmark.template Run<DynamicPGM<uint64_t, BranchingBinarySearch<record>,128>>();
+        benchmark.template Run<DynamicPGM<uint64_t, BranchingBinarySearch<record>,256>>();
+        benchmark.template Run<DynamicPGM<uint64_t, BranchingBinarySearch<record>,512>>();
+        // benchmark.template Run<DynamicPGM<uint64_t, BranchingBinarySearch<record>,1024>>();
+
+        // benchmark.template Run<DynamicPGM<uint64_t, InterpolationSearch<record>,64>>();
+        benchmark.template Run<DynamicPGM<uint64_t, InterpolationSearch<record>,128>>();
+        benchmark.template Run<DynamicPGM<uint64_t, InterpolationSearch<record>,256>>();
+        benchmark.template Run<DynamicPGM<uint64_t, InterpolationSearch<record>,512>>();
+        // benchmark.template Run<DynamicPGM<uint64_t, InterpolationSearch<record>,1024>>();
+
+        // benchmark.template Run<DynamicPGM<uint64_t, ExponentialSearch<record>,64>>();
+        benchmark.template Run<DynamicPGM<uint64_t, ExponentialSearch<record>,128>>();
+        benchmark.template Run<DynamicPGM<uint64_t, ExponentialSearch<record>,256>>();
+        benchmark.template Run<DynamicPGM<uint64_t, ExponentialSearch<record>,512>>();
+        // benchmark.template Run<DynamicPGM<uint64_t, ExponentialSearch<record>,1024>>();
+        
       }
     }
   }
