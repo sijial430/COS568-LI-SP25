@@ -1,242 +1,183 @@
 #ifndef TLI_HYBRID_PGM_LIPP_ASYNC_H
 #define TLI_HYBRID_PGM_LIPP_ASYNC_H
 
+/*
+ * HybridPGMLIPPAsync – multi‑shard (lock‑free, single thread).
+ * ===========================================================
+ * Implementation core lives in template **HybridPGMLIPPAsyncImpl**.
+ * For compatibility with the benchmark harness that expects the
+ * three‑parameter template <KeyType, SearchClass, pgm_error>, we
+ * provide an alias **HybridPGMLIPPAsync** at the end of the file.
+ */
+
 #include <algorithm>
-#include <cstdlib>
-#include <iostream>
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <limits>
+#include <type_traits>
 #include <vector>
-#include <unordered_map>
-#include <atomic>
-#include <thread>
-#include <mutex>
-#include <condition_variable>
+#include <string>
 
 #include "../util.h"
 #include "base.h"
+#include "dynamic_pgm_index.h"
+#include "lipp.h"
 #include "pgm_index.h"
-#include "dynamic_pgm_index_async.h"
-#include "lipp_async.h"
-#include "../searches/linear_search.h"
 #include "../searches/branching_binary_search.h"
-#include "../searches/interpolation_search.h"
-#include "../searches/exponential_search.h"
 
-template <class KeyType, class SearchClass, size_t pgm_error>
-class HybridPGMLIPPAsync : public Competitor<KeyType, SearchClass> {
+/* ------------------------------------------------------------------ */
+
+template <class  KeyType,
+          size_t NumShards    = 8,          /* power‑of‑two, >=1 */
+          size_t pgm_error    = 32,         /* PGM segment error */
+          size_t kBufCap      = 1 << 10,    /* 1 024 staged keys */
+          size_t kFlushChunk  = 128,        /* migrate per insert*/
+          class  SearchClass  = BranchingBinarySearch<0>>
+class HybridPGMLIPPAsyncImpl : public Competitor<KeyType, SearchClass> {
+  static_assert(std::is_integral_v<KeyType>, "KeyType must be integral");
+  static_assert((NumShards & (NumShards - 1)) == 0, "NumShards must be power‑of‑two");
 public:
-  HybridPGMLIPPAsync(const std::vector<int>& params) {
-    flush_threshold_ = 10000;
-    if (params.size() >= 1) flush_threshold_ = params[0];
-    size_t key_size = sizeof(KeyType);
-    if (key_size <= 4) {
-      flush_threshold_ = std::max(flush_threshold_, static_cast<size_t>(20000));
-    } else if (key_size >= 16) {
-      flush_threshold_ = std::min(flush_threshold_, static_cast<size_t>(5000));
-    }
-    stop_flag_ = false;
-    flush_thread_ = std::thread([this] { this->FlushThreadFunc(); });
-  }
+  explicit HybridPGMLIPPAsyncImpl(const std::vector<int>&) {}
 
-  ~HybridPGMLIPPAsync() {
-    stop_flag_ = true;
-    flush_cv_.notify_all();
-    if (flush_thread_.joinable()) flush_thread_.join();
-    // Final flush for any remaining data
-    std::lock_guard<std::mutex> lock(buffer_mutex_);
-    if (!active_buffer_.empty()) {
-      flush_buffer_.insert(active_buffer_.begin(), active_buffer_.end());
-      active_buffer_.clear();
-    }
-    if (!flush_buffer_.empty()) {
-      FlushBufferUnlocked();
-    }
-  }
+  /* ---------- build -------------------------------------------- */
+  uint64_t Build(const std::vector<KeyValue<KeyType>>& data, size_t) {
+    std::array<std::vector<std::pair<KeyType,uint64_t>>, NumShards> bucket;
+    for (auto& vec : bucket) vec.clear();
+    for (const auto& kv : data)
+      bucket[shard_of(kv.key)].push_back({kv.key, kv.value});
 
-  uint64_t Build(const std::vector<KeyValue<KeyType>>& data, size_t num_threads) {
-    std::vector<std::pair<KeyType, uint64_t>> base_data;
-    base_data.reserve(data.size());
-    for (const auto& item : data) {
-      base_data.emplace_back(item.key, item.value);
-    }
-
-    // Adjust flush threshold based on data size
-    if (data.size() > 1000000) {
-      // For large datasets, use larger batches
-      flush_threshold_ = std::max(flush_threshold_, data.size() / 100);
-    }
-
-    // Build both indexes
     return util::timing([&] {
-      // Build PGM index
-      pgm_ = decltype(pgm_)(base_data.begin(), base_data.end());
-      
-      // Build LIPP index if enough data
-      if (base_data.size() > MIN_BULK_SIZE) {
-        lipp_.bulk_load(base_data.data(), base_data.size());
-        lipp_initialized_ = true;
-      } else {
-        lipp_initialized_ = false;
+      for (size_t s = 0; s < NumShards; ++s) {
+        auto& vec = bucket[s];
+        std::sort(vec.begin(), vec.end(), [](auto&a,auto&b){return a.first<b.first;});
+        pgm_[s] = Pgm(vec.begin(), vec.end());
+        if (vec.size() >= MIN_BULK_SIZE) {
+          lipp_[s].bulk_load(vec.data(), vec.size());
+          lipp_init_[s] = true;
+        }
       }
     });
   }
 
-  size_t EqualityLookup(const KeyType& key, uint32_t thread_id) const {
-    // First check both buffers (fastest)
-    {
-      std::lock_guard<std::mutex> lock(buffer_mutex_);
-      auto it = active_buffer_.find(key);
-      if (it != active_buffer_.end()) return it->second;
-      it = flush_buffer_.find(key);
-      if (it != flush_buffer_.end()) return it->second;
-    }
-    // Then check LIPP if initialized (second fastest)
-    if (lipp_initialized_) {
-      uint64_t value;
-      if (lipp_.find(key, value)) {
-        return value;
-      }
-    }
-    // Finally check PGM
-    auto pgm_it = pgm_.find(key);
-    return (pgm_it != pgm_.end()) ? pgm_it->value() : util::NOT_FOUND;
+  /* ---------- insert ------------------------------------------- */
+  void Insert(const KeyValue<KeyType>& kv, uint32_t) {
+    const size_t s = shard_of(kv.key);
+    pgm_[s].insert(kv.key, kv.value);
+
+    const size_t idx = tail_[s] & (kBufCap - 1);
+    buf_key_[s][idx] = kv.key;
+    buf_val_[s][idx] = kv.value;
+    ++tail_[s]; ++staged_[s];
+
+    if (staged_[s] >= kFlushChunk) flush_chunk(s);
   }
 
-  void Insert(const KeyValue<KeyType>& data, uint32_t thread_id) {
-    pgm_.insert(data.key, data.value);
-    {
-      std::lock_guard<std::mutex> lock(buffer_mutex_);
-      active_buffer_[data.key] = data.value;
-      if (++insert_count_ >= flush_threshold_) {
-        active_buffer_.swap(flush_buffer_);
-        insert_count_ = 0;
-        flush_cv_.notify_one();
-      }
+  /* ---------- equality lookup ---------------------------------- */
+  size_t EqualityLookup(const KeyType& key, uint32_t) const {
+    const size_t s = shard_of(key);
+
+    for (size_t i = 0; i < staged_[s]; ++i) {
+      const size_t idx = (head_[s] + i) & (kBufCap - 1);
+      if (buf_key_[s][idx] == key) return buf_val_[s][idx];
     }
+    if (lipp_init_[s]) {
+      uint64_t v; if (lipp_[s].find(key, v)) return v;
+    }
+    auto it = pgm_[s].find(key);
+    return it != pgm_[s].end() ? it->value() : util::NOT_FOUND;
   }
 
-  uint64_t RangeQuery(const KeyType& lower_key, const KeyType& upper_key, uint32_t thread_id) const {
-    uint64_t result = 0;
-    std::unordered_map<KeyType, bool> seen_keys;
-    // Check both buffers first
-    {
-      std::lock_guard<std::mutex> lock(buffer_mutex_);
-      for (const auto& [key, value] : active_buffer_) {
-        if (key >= lower_key && key <= upper_key) {
-          result += value;
-          seen_keys[key] = true;
+  /* ---------- range query -------------------------------------- */
+  uint64_t RangeQuery(const KeyType& lo, const KeyType& hi, uint32_t) const {
+    uint64_t sum = 0;
+    for (size_t s = 0; s < NumShards; ++s) {
+      for (size_t i = 0; i < staged_[s]; ++i) {
+        const size_t idx = (head_[s] + i) & (kBufCap - 1);
+        const KeyType k = buf_key_[s][idx];
+        if (k >= lo && k <= hi) sum += buf_val_[s][idx];
+      }
+      if (lipp_init_[s]) {
+        auto it = lipp_[s].lower_bound(lo);
+        while (it != lipp_[s].end() && it->comp.data.key <= hi) {
+          sum += it->comp.data.value; ++it;
         }
       }
-      for (const auto& [key, value] : flush_buffer_) {
-        if (key >= lower_key && key <= upper_key) {
-          result += value;
-          seen_keys[key] = true;
-        }
-      }
+      auto pit = pgm_[s].lower_bound(lo);
+      while (pit != pgm_[s].end() && pit->key() <= hi) { sum += pit->value(); ++pit; }
     }
-    // Then check LIPP if initialized
-    if (lipp_initialized_) {
-      auto it = lipp_.lower_bound(lower_key);
-      while (it != lipp_.end() && it->comp.data.key <= upper_key) {
-        if (seen_keys.find(it->comp.data.key) == seen_keys.end()) {
-          result += it->comp.data.value;
-          seen_keys[it->comp.data.key] = true;
-        }
-        ++it;
-      }
-    }
-    // Finally check PGM
-    auto it = pgm_.lower_bound(lower_key);
-    while (it != pgm_.end() && it->key() <= upper_key) {
-      if (seen_keys.find(it->key()) == seen_keys.end()) {
-        result += it->value();
-      }
-      ++it;
-    }
-    return result;
+    return sum;
   }
 
-  bool applicable(bool unique, bool range_query, bool insert, bool multithread, const std::string& ops_filename) const {
-    std::string name = SearchClass::name();
-    return name != "LinearAVX" && !multithread;
+  /* ---------- benchmark meta ----------------------------------- */
+  bool applicable(bool /*unique*/, bool /*range_query*/, bool /*insert*/,
+                  bool /*multithread*/, const std::string& /*ops_filename*/) const {
+    return true; /* allow multi-thread */
   }
-
-  std::string name() const { return "HybridPGMLIPPAsync"; }
-
-  std::vector<std::string> variants() const { 
-    std::vector<std::string> vec;
-    vec.push_back(SearchClass::name());
-    vec.push_back(std::to_string(pgm_error));
-    vec.push_back(std::string("FlushThreshold=") + std::to_string(flush_threshold_));
-    return vec;
+  std::string name() const { return "HybridPGMLIPPASYNC"; }
+  std::vector<std::string> variants() const {
+    return {SearchClass::name(), std::to_string(pgm_error), "Shards="+std::to_string(NumShards), "kFlushChunk="+std::to_string(kFlushChunk), "kBufCap="+std::to_string(kBufCap)};
   }
-
-  std::size_t size() const { 
-    size_t total = pgm_.size_in_bytes();
-    if (lipp_initialized_) total += lipp_.index_size();
-    // Estimate buffer size
-    total += active_buffer_.size() * (sizeof(KeyType) + sizeof(uint64_t));
-    total += flush_buffer_.size() * (sizeof(KeyType) + sizeof(uint64_t));
-    return total;
+  std::size_t size() const {
+    size_t sz = 0;
+    for (size_t s=0;s<NumShards;++s) {
+      sz += pgm_[s].size_in_bytes();
+      if (lipp_init_[s]) sz += lipp_[s].index_size();
+    }
+    sz += NumShards * kBufCap * (sizeof(KeyType)+sizeof(uint64_t));
+    return sz;
   }
 
 private:
-  static constexpr size_t MIN_BULK_SIZE = 1000;
+  /* ---------- helper routines ---------------------------------- */
+  static constexpr size_t MIN_BULK_SIZE = 16'384;
+  static inline size_t shard_of(KeyType k) noexcept { return static_cast<size_t>(k) & (NumShards - 1); }
 
-  void FlushThreadFunc() {
-    while (!stop_flag_) {
-      std::unique_lock<std::mutex> lock(buffer_mutex_);
-      flush_cv_.wait(lock, [this] { return !flush_buffer_.empty() || stop_flag_; });
-      if (!flush_buffer_.empty()) {
-        FlushBufferUnlocked();
+  void flush_chunk(size_t s) {
+    uint64_t tmp;
+    const size_t n = std::min(staged_[s], kFlushChunk);
+    for (size_t i = 0; i < n; ++i) {
+      const size_t idx = head_[s] & (kBufCap - 1);
+      const KeyType  k = buf_key_[s][idx];
+      const uint64_t v = buf_val_[s][idx];
+      ++head_[s]; --staged_[s];
+
+      if (lipp_init_[s]) {
+        if (lipp_[s].find(k, tmp)) continue;           /* duplicate */
+        lipp_[s].insert(k, v);
+        pgm_[s].erase(k);
+      } else {
+        scratch_[s].push_back({k, v});
+        if (scratch_[s].size() >= MIN_BULK_SIZE) {
+          std::sort(scratch_[s].begin(), scratch_[s].end(), [](auto&a,auto&b){return a.first<b.first;});
+          lipp_[s].bulk_load(scratch_[s].data(), scratch_[s].size());
+          scratch_[s].clear(); lipp_init_[s] = true;
+        }
       }
     }
   }
 
-  void FlushBufferUnlocked() {
-    auto start_time = std::chrono::high_resolution_clock::now();
-    if (!lipp_initialized_ && flush_buffer_.size() >= MIN_BULK_SIZE) {
-      std::vector<std::pair<KeyType, uint64_t>> data;
-      data.reserve(flush_buffer_.size());
-      for (const auto& [key, value] : flush_buffer_) {
-        data.emplace_back(key, value);
-      }
-      std::sort(data.begin(), data.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
-      lipp_.bulk_load(data.data(), data.size());
-      lipp_initialized_ = true;
-    } else if (lipp_initialized_) {
-      for (const auto& [key, value] : flush_buffer_) {
-        lipp_.insert(key, value);
-      }
-    }
-    flush_buffer_.clear();
-    auto end_time = std::chrono::high_resolution_clock::now();
-    buffer_flush_time_ = std::chrono::duration_cast<std::chrono::nanoseconds>(end_time - start_time).count();
-    // Dynamic adjustment of flush threshold based on performance
-    if (buffer_flush_time_ > 0) {
-      if (buffer_flush_time_ > 10000000) {
-        flush_threshold_ = std::max(static_cast<size_t>(1000), flush_threshold_ / 2);
-      } else if (buffer_flush_time_ < 1000000) {
-        flush_threshold_ = std::min(static_cast<size_t>(50000), flush_threshold_ * 2);
-      }
-    }
-  }
+  /* ---------- type aliases ------------------------------------- */
+  using Pgm = DynamicPGMIndex<KeyType, uint64_t, SearchClass,
+                              PGMIndex<KeyType, SearchClass, pgm_error, 16>>;
+  using Lipp = LIPP<KeyType, uint64_t>;
 
-  // Configuration
-  size_t flush_threshold_ = 10000;
-  size_t insert_count_ = 0;
-  uint64_t buffer_flush_time_ = 0;
+  /* ---------- per‑shard data ----------------------------------- */
+  std::array<Pgm,  NumShards> pgm_{};
+  std::array<Lipp, NumShards> lipp_{};
+  std::array<bool, NumShards> lipp_init_{};
 
-  // Data structures
-  DynamicPGMIndex<KeyType, uint64_t, SearchClass, PGMIndex<KeyType, SearchClass, pgm_error>> pgm_;
-  LIPP<KeyType, uint64_t> lipp_;
-  bool lipp_initialized_ = false;
-  std::unordered_map<KeyType, uint64_t> active_buffer_;
-  std::unordered_map<KeyType, uint64_t> flush_buffer_;
-  // std::mutex buffer_mutex_;
-  mutable std::mutex buffer_mutex_;   // accessed from const methods
-  std::condition_variable flush_cv_;
-  std::thread flush_thread_;
-  std::atomic<bool> stop_flag_;
+  std::array<std::array<KeyType , kBufCap>,  NumShards> buf_key_{};
+  std::array<std::array<uint64_t, kBufCap>, NumShards> buf_val_{};
+  std::array<size_t, NumShards> head_{};
+  std::array<size_t, NumShards> tail_{};
+  std::array<size_t, NumShards> staged_{};
+
+  std::array<std::vector<std::pair<KeyType,uint64_t>>, NumShards> scratch_{};
 };
 
-#endif  // TLI_HYBRID_PGM_LIPP_ASYNC_H
+/* ---------- compatibility alias for benchmark harness ---------- */
+template <class KeyType, class SearchClass, size_t pgm_error>
+using HybridPGMLIPPAsync = HybridPGMLIPPAsyncImpl<KeyType, 4, pgm_error, 1<<10, 128, SearchClass>;
+
+#endif /* TLI_HYBRID_PGM_LIPP_ASYNC_H */

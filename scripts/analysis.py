@@ -2,8 +2,8 @@ import pandas as pd
 
 
 def result_analysis():
-    tasks = ['fb']  # Only 'fb' task
-    indexs = ['DynamicPGM', 'LIPP', 'HybridPGMLIPP', 'HybridPGMLIPPAsync']  # Added HybridPGMLIPP
+    tasks = ['fb', 'osmc', 'books']  # Only 'fb' task
+    indexs = ['DynamicPGM', 'LIPP', 'HybridPGMLIPPASYNC']  # Added HybridPGMLIPP
     # Create dictionaries to store throughput data for each index
     # lookuponly_throughput = {}
     # insertlookup_throughput = {}
@@ -32,8 +32,9 @@ def result_analysis():
         full_task_name = f"{task}_100M_public_uint64"
         # lookup_only_results = pd.read_csv(f"results/{full_task_name}_ops_2M_0.000000rq_0.500000nl_0.000000i_results_table.csv")
         # insert_lookup_results = pd.read_csv(f"results/{full_task_name}_ops_2M_0.000000rq_0.500000nl_0.500000i_0m_results_table.csv")
-        insert_lookup_mix_1_results = pd.read_csv(f"results/{full_task_name}_ops_2M_0.000000rq_0.500000nl_0.100000i_0m_mix_results_table.csv")
-        insert_lookup_mix_2_results = pd.read_csv(f"results/{full_task_name}_ops_2M_0.000000rq_0.500000nl_0.900000i_0m_mix_results_table.csv")
+        insert_lookup_mix_1_results = pd.read_csv(f"results/{full_task_name}_ops_2M_0.000000rq_0.500000nl_0.100000i_0m_mix_results_table.csv", engine='python', on_bad_lines='skip')
+        insert_lookup_mix_2_results = pd.read_csv(f"results/{full_task_name}_ops_2M_0.000000rq_0.500000nl_0.900000i_0m_mix_results_table.csv",
+                                               engine='python', on_bad_lines='skip')
         
         for index in indexs:
             # find the row where lookup_only_result['index_name'] == index
@@ -55,55 +56,75 @@ def result_analysis():
             
                 
             # find the row where insert_lookup_mix_1_result['index_name'] == index
+            insert_lookup_mix_1_result = insert_lookup_mix_1_results[insert_lookup_mix_1_results['index_name'] == index]
+            # compute average throughput for each row
+            insert_lookup_mix_1_result['avg_throughput'] = insert_lookup_mix_1_result[['mixed_throughput_mops1', 'mixed_throughput_mops2', 'mixed_throughput_mops3']].mean(axis=1)
+            # select the row with the highest average throughput
             try:
-                insert_lookup_mix_1_result = insert_lookup_mix_1_results[insert_lookup_mix_1_results['index_name'] == index]
-                # compute average throughput for each row
-                insert_lookup_mix_1_result['avg_throughput'] = insert_lookup_mix_1_result[['mixed_throughput_mops1', 'mixed_throughput_mops2', 'mixed_throughput_mops3']].mean(axis=1)
-                # select the row with the highest average throughput
                 best_row = insert_lookup_mix_1_result.loc[insert_lookup_mix_1_result['avg_throughput'].idxmax()]
                 insertlookup_mix1_throughput[index][task] = round(best_row['avg_throughput'], 4)
-                
-                # Store the index size for the best configuration
-                index_sizes_mix1[index][task] = best_row['index_size_bytes']
-                
-                # Store the best hyperparameters
-                hyperparams = {}
-                if 'search_method' in best_row and not pd.isna(best_row['search_method']):
-                    hyperparams['search_method'] = best_row['search_method']
-                if 'value' in best_row and not pd.isna(best_row['value']):
-                    hyperparams['value'] = int(best_row['value'])
-                if 'flush_threshold' in best_row and not pd.isna(best_row['flush_threshold']):
-                    hyperparams['flush_threshold'] = best_row['flush_threshold']
-                best_hyperparams_mix1[index][task] = hyperparams
             except:
-                pass
+                print(f"No best row found for {index} {task}")
+                insertlookup_mix1_throughput[index][task] = 0
+                # import pdb; pdb.set_trace()
+            # Store the index size for the best configuration
+            index_sizes_mix1[index][task] = best_row['index_size_bytes']
+            
+            # Store the best hyperparameters
+            hyperparams = {}
+            if 'search_method' in best_row and not pd.isna(best_row['search_method']):
+                hyperparams['search_method'] = best_row['search_method']
+            if 'value' in best_row and not pd.isna(best_row['value']):
+                hyperparams['value'] = int(best_row['value'])
+            if 'flush_threshold' in best_row and not pd.isna(best_row['flush_threshold']):
+                hyperparams['flush_threshold'] = best_row['flush_threshold']
+            best_hyperparams_mix1[index][task] = hyperparams
             
             
             # find the row where insert_lookup_mix_2_result['index_name'] == index
+            insert_lookup_mix_2_result = insert_lookup_mix_2_results[insert_lookup_mix_2_results['index_name'] == index]
+            # compute average throughput for each row
+            insert_lookup_mix_2_result['avg_throughput'] = insert_lookup_mix_2_result[['mixed_throughput_mops1', 'mixed_throughput_mops2', 'mixed_throughput_mops3']].mean(axis=1)
             try:
-                insert_lookup_mix_2_result = insert_lookup_mix_2_results[insert_lookup_mix_2_results['index_name'] == index]
-                # compute average throughput for each row
-                insert_lookup_mix_2_result['avg_throughput'] = insert_lookup_mix_2_result[['mixed_throughput_mops1', 'mixed_throughput_mops2', 'mixed_throughput_mops3']].mean(axis=1)
                 # select the row with the highest average throughput
                 best_row = insert_lookup_mix_2_result.loc[insert_lookup_mix_2_result['avg_throughput'].idxmax()]
                 insertlookup_mix2_throughput[index][task] = round(best_row['avg_throughput'], 4)
-                
-                # Store the index size for the best configuration
-                if index not in index_sizes_mix2:
-                    index_sizes_mix2[index] = {}
-                index_sizes_mix2[index][task] = best_row['index_size_bytes']
-                
-                # Store the best hyperparameters
-                hyperparams = {}
-                if 'search_method' in best_row and not pd.isna(best_row['search_method']):
-                    hyperparams['search_method'] = best_row['search_method']
-                if 'value' in best_row and not pd.isna(best_row['value']):
-                    hyperparams['value'] = int(best_row['value'])
-                if 'flush_threshold' in best_row and not pd.isna(best_row['flush_threshold']):
-                    hyperparams['flush_threshold'] = best_row['flush_threshold']
-                best_hyperparams_mix2[index][task] = hyperparams
             except:
-                pass
+                print(f"No best row found for {index} {task}")
+                insertlookup_mix2_throughput[index][task] = 0
+                # import pdb; pdb.set_trace()
+            
+            # Store the index size for the best configuration
+            if index not in index_sizes_mix2:
+                index_sizes_mix2[index] = {}
+            index_sizes_mix2[index][task] = best_row['index_size_bytes']
+            
+            # Store the best hyperparameters
+            hyperparams = {}
+            if 'search_method' in best_row and not pd.isna(best_row['search_method']):
+                hyperparams['search_method'] = best_row['search_method']
+            if 'value' in best_row and not pd.isna(best_row['value']):
+                hyperparams['value'] = int(best_row['value'])
+            if 'flush_threshold' in best_row and not pd.isna(best_row['flush_threshold']):
+                hyperparams['flush_threshold'] = best_row['flush_threshold']
+            best_hyperparams_mix2[index][task] = hyperparams
+    
+    # Save data to CSV files for further analysis
+    import os
+    os.makedirs('analysis_results', exist_ok=True)
+    
+    # pd.DataFrame(lookuponly_throughput).to_csv('analysis_results/lookuponly_throughput.csv')
+    
+    # lookup_df = pd.DataFrame({idx: data['lookup'] for idx, data in insertlookup_throughput.items()})
+    # insert_df = pd.DataFrame({idx: round(data['insert'], 4) for idx, data in insertlookup_throughput.items()})
+    # lookup_df.to_csv('analysis_results/insertlookup_lookup_throughput.csv')
+    # insert_df.to_csv('analysis_results/insertlookup_insert_throughput.csv')
+    
+    pd.DataFrame(insertlookup_mix1_throughput).to_csv('analysis_results/insertlookup_mix1_throughput.csv')
+    pd.DataFrame(insertlookup_mix2_throughput).to_csv('analysis_results/insertlookup_mix2_throughput.csv')
+    pd.DataFrame(index_sizes_mix1).to_csv('analysis_results/index_sizes_mix1.csv')
+    pd.DataFrame(index_sizes_mix2).to_csv('analysis_results/index_sizes_mix2.csv')
+    
     # plot the figure of throughput, x axis is the index, y axis is the throughput
     # the figure should contain 4 subplots, each subplot corresponds to a workload, including lookup_only, insert_lookup, insert_lookup_mix1, insert_lookup_mix2
     # each subplot should contain 3 bars, each bar corresponds to a dataset (fb, osmc, books) if the throughput is not empty
@@ -117,8 +138,8 @@ def result_analysis():
     # Define common plot parameters
     bar_width = 0.2
     index = range(len(indexs))
-    # colors = ['blue', 'green', 'red', 'orange']
-    colors = ['blue', 'green']
+    colors = ['blue', 'green', 'red', 'orange']
+    # colors = ['blue', 'green']
     
     # 1. Plot lookup-only throughput
     # ax = axs[0]
@@ -291,21 +312,6 @@ def result_analysis():
     plt.savefig('benchmark_results.png', dpi=300)
     plt.show()
     
-    # Save data to CSV files for further analysis
-    import os
-    os.makedirs('analysis_results', exist_ok=True)
-    
-    # pd.DataFrame(lookuponly_throughput).to_csv('analysis_results/lookuponly_throughput.csv')
-    
-    # lookup_df = pd.DataFrame({idx: data['lookup'] for idx, data in insertlookup_throughput.items()})
-    # insert_df = pd.DataFrame({idx: round(data['insert'], 4) for idx, data in insertlookup_throughput.items()})
-    # lookup_df.to_csv('analysis_results/insertlookup_lookup_throughput.csv')
-    # insert_df.to_csv('analysis_results/insertlookup_insert_throughput.csv')
-    
-    pd.DataFrame(insertlookup_mix1_throughput).to_csv('analysis_results/insertlookup_mix1_throughput.csv')
-    pd.DataFrame(insertlookup_mix2_throughput).to_csv('analysis_results/insertlookup_mix2_throughput.csv')
-    pd.DataFrame(index_sizes_mix1).to_csv('analysis_results/index_sizes_mix1.csv')
-    pd.DataFrame(index_sizes_mix2).to_csv('analysis_results/index_sizes_mix2.csv')
 
 if __name__ == "__main__":
     result_analysis()

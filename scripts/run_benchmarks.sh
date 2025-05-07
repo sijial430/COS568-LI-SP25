@@ -22,14 +22,15 @@ function execute_uint64_100M() {
 
 mkdir -p ./results
 
-# for DATA in fb_100M_public_uint64 books_100M_public_uint64 osmc_100M_public_uint64
-for DATA in fb_100M_public_uint64
+for DATA in fb_100M_public_uint64 books_100M_public_uint64 osmc_100M_public_uint64
+# for DATA in osmc_100M_public_uint64
 do
 # for INDEX in LIPP BTree DynamicPGM HybridPGMLIPP
-for INDEX in LIPP DynamicPGM HybridPGMLIPP HybridPGMLIPPAsync
-# for INDEX in HybridPGMLIPP
+for INDEX in LIPP DynamicPGM HybridPGMLIPPAsync
+# for INDEX in HybridPGMLIPPAsync
 do
-    execute_uint64_100M ${DATA} $INDEX
+    echo "Executing benchmark for $DATA and $INDEX..."
+    execute_uint64_100M $DATA $INDEX
 done
 done
 
@@ -46,7 +47,7 @@ do
             sed -i '1d' $FILE  # Delete the first line
         fi
         # Add the header
-        sed -i '1s/^/index_name,build_time_ns1,build_time_ns2,build_time_ns3,index_size_bytes,lookup_throughput_mops1,lookup_throughput_mops2,lookup_throughput_mops3,search_method,value,flush_threshold\n/' $FILE
+        sed -i '1s/^/index_name,build_time_ns1,build_time_ns2,build_time_ns3,index_size_bytes,lookup_throughput_mops1,lookup_throughput_mops2,lookup_throughput_mops3,search_method,value,flush_threshold,num_shards,kbufcap,kflushchunk,pgm_error\n/' $FILE
     elif [[ $FILE == *mix* ]]; then
         # For insert+lookup workload
         # Remove existing header if present
@@ -54,7 +55,7 @@ do
             sed -i '1d' $FILE  # Delete the first line
         fi
         # Add the header
-        sed -i '1s/^/index_name,build_time_ns1,build_time_ns2,build_time_ns3,index_size_bytes,mixed_throughput_mops1,mixed_throughput_mops2,mixed_throughput_mops3,search_method,value,flush_threshold\n/' $FILE
+        sed -i '1s/^/index_name,build_time_ns1,build_time_ns2,build_time_ns3,index_size_bytes,mixed_throughput_mops1,mixed_throughput_mops2,mixed_throughput_mops3,search_method,value,flush_threshold,num_shards,kbufcap,kflushchunk,pgm_error\n/' $FILE
     else
         # For insert+lookup workload
         # Remove existing header if present
@@ -62,7 +63,7 @@ do
             sed -i '1d' $FILE  # Delete the first line
         fi
         # Add the header
-        sed -i '1s/^/index_name,build_time_ns1,build_time_ns2,build_time_ns3,index_size_bytes,insert_throughput_mops1,lookup_throughput_mops1,insert_throughput_mops2,lookup_throughput_mops2,insert_throughput_mops3,lookup_throughput_mops3,search_method,value,flush_threshold\n/' $FILE
+        sed -i '1s/^/index_name,build_time_ns1,build_time_ns2,build_time_ns3,index_size_bytes,insert_throughput_mops1,lookup_throughput_mops1,insert_throughput_mops2,lookup_throughput_mops2,insert_throughput_mops3,lookup_throughput_mops3,search_method,value,flush_threshold,num_shards,kbufcap,kflushchunk,pgm_error\n/' $FILE
     fi
     echo "Header set for $FILE"
 done
